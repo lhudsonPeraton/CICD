@@ -7,6 +7,7 @@ COPY public .
 COPY package.json .
 COPY package-lock.json .
 
+RUN chown -R node:node /usr/app
 RUN npx create-react-app react-bootstrap-app
 RUN npm install @mui/material @emotion/react @emotion/styled react-router-dom@6 react-leaflet react-plotly.js plotly.js axios
 
