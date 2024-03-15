@@ -1,0 +1,68 @@
+# These steps were originally designed for a WSL2 Ubuntu environment
+
+# Prerequisites:
+- A WSL2 Ubuntu environment
+- Docker installed on the WSL2 environment
+- An internet connection
+- Docker API exposed on WSL2
+-- https://docs.docker.com/config/daemon/remote-access/
+-- https://docs.docker.com/engine/security/protect-access/
+-- WARNING: You need to secure your Docker API endpoint. 
+--- This demo assumes you have set up [TLS certificates | https://docs.docker.com/engine/security/protect-access/#use-tls-https-to-protect-the-docker-daemon-socket] to protect your API. 
+--- Additionally, you will want to limit exposure to the Docker API to local addresses
+---- WARNING: Do NOT mount the docker.sock UNIX socket onto a container: https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html#rule-1-do-not-expose-the-docker-daemon-socket-even-to-the-containers
+--- You can use similar steps to connect to a remote docker daemon instead of the one on your host machine.
+-- You can optionally do "docker-in-docker" instead, but that comes with its own challenges.
+
+
+# Set up the Jenkins Controller
+## Create a persistent volume for the Jenkins Controller
+docker volume create jenkins-vol
+
+## Bridge networks prevent containers from communicating with other containers outside the same network
+## Create a new bridge network named "jenkins"
+docker network create -d bridge jenkins
+
+## Run the docker controller container
+Expose port 8080 on the host and map it to 8080 on the container (order is `host:container`)
+Mount the persistent volume (`jenkins-vol`) such that the controller data survives restarts and deletions
+docker run -p 8080:8080 --network=jenkins --restart=on-failure -d --name=jenkins -v jenkins-vol:/var/jenkins_home jenkins/jenkins:lts-jdk17
+
+## watch the logs and track when jenkins finishes booting up
+docker logs -f jenkins
+
+## Once ready, you can view jenkins at http://localhost:8080
+## NOTE: You should reconfigure the "built-in node" (the controller) such that it cannot run pipelines
+### One way to do this is to set the number of "executors" to 0.
+
+## You will need to install the following plugins:
+### Git, SSH Build Agent, Docker, Docker Pipeline
+
+
+# Set up the Jenkins agent
+
+## Create a persistent volume for the Jenkins agent data
+docker volume create agent-vol
+
+## NOTE: This demo uses a custom image that installs the Docker CLI and
+### required TLS certificates needed to communicate with the Docker API
+### on the host. See the custom-agent-image/Dockerfile in the repo.
+
+## You will need to set up an SSH keypair to allow the jenkins controller and agent nodes to communicate with each other
+### Supply the public key where the command says <public key>
+## Find the <Jenkins Network Gateway> by running:
+### docker network inspect -f '{{ (index .IPAM.Config 0).Gateway }}' jenkins
+docker run --network=jenkins --restart=on-failure --name=test-agent --add-host=host.docker.internal:<Jenkins Network Gateway> -v agent-vol:/home/jenkins/agent:rw -d jenkins/ssh-agent:jdk17-with-docker "<public key>"
+
+
+## Next, in Jenkins, add the private key from your SSH keypair to an SSH credential
+
+## Now, add the agent to the Node list
+### The jenkins/ssh-agent documentation says the Root directory must be:
+/home/jenkins/agent
+
+### Host must be:
+test-agent
+### Unless you changed the name of the agent container
+### This takes advantage of Docker DNS and allows you to use the container
+### name as a DNS name.

@@ -1,0 +1,57 @@
+pipeline {
+  agent none
+  stages {
+    stage('Checkout react code from GitHub') {
+      agent {
+        docker { 
+          image 'bitnami/git:latest' 
+          args '--entrypoint=' // Jenkins-recommended way of dealing with an entrypoint issue
+        }
+      }
+      steps {
+        checkout scmGit(branches: [[name: '*/main']], extensions: [cleanBeforeCheckout()], userRemoteConfigs: [[url: 'https://github.com/lhudsonPeraton/React.git']])
+        sh 'ls -al'
+      }
+      post {
+        success {
+          stash includes: '**', name: 'react-code'
+        }
+      }
+    }
+    stage('Checkout CICD code from GitHub') {
+      agent {
+        docker { 
+          image 'bitnami/git:latest' 
+          args '--entrypoint=' // Jenkins-recommended way of dealing with an entrypoint issue
+        }
+      }
+      steps {
+        checkout scmGit(branches: [[name: '*/main']], extensions: [cleanBeforeCheckout()], userRemoteConfigs: [[url: 'https://github.com/lhudsonPeraton/CICD.git']])
+        sh 'ls -al'
+      }
+      post {
+        success {
+          stash includes: '*react-image/Dockerfile', name: 'CICD-code'
+        }
+      }
+    }
+    
+    stage('Build React Image') {
+      agent {
+        docker { image 'docker:dind' }
+      }
+      environment {
+        DOCKER_TLS_VERIFY = '1'
+        DOCKER_HOST = "tcp://host.docker.internal:2376"
+      }
+      steps {
+        unstash 'react-code'
+        unstash 'CICD-code'
+        withCredentials([dockerCert(credentialsId: 'docker-tls-certs', variable: 'DOCKER_CERT_PATH')]) {
+            dockerImage = docker.build react:demo
+        }
+
+      }
+    }
+  }
+}
