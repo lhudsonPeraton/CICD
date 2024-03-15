@@ -42,13 +42,24 @@ pipeline {
       }
       environment {
         DOCKER_TLS_VERIFY = '1'
+
+        // I defined "host.docker.internal" under:
+        // Manage Jenkins > System > Global properties > Environment variables
+        // This is the same value as the "Gateway" used with the agent container.
         DOCKER_HOST = "tcp://host.docker.internal:2376"
+
+        // Prevent docker from trying to interact with directories
+        // that it does not have permission to access.
+        HOME = "${env.WORKSPACE}"
       }
       steps {
         unstash 'react-code'
         unstash 'CICD-code'
         withCredentials([dockerCert(credentialsId: 'docker-tls-certs', variable: 'DOCKER_CERT_PATH')]) {
-            dockerImage = docker.build react:demo
+            sh 'DOCKER_CERT_PATH="$DOCKER_CERT_PATH"'
+            sh 'docker info'
+            sh 'ls -al'
+            sh 'docker build -t react:demo ./react-image/'
         }
 
       }
