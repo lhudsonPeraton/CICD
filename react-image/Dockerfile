@@ -13,4 +13,4 @@ RUN npm install @mui/material @emotion/react @emotion/styled react-router-dom@6 
 EXPOSE 8080
 
 ENTRYPOINT ["npm"]
-CMD [ "run start" ]
+CMD [ "start" ]
